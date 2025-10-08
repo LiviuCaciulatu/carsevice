@@ -1,20 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import styles from "./S3Uploader.module.scss";
 // Using server-side AWS Textract for extraction; client-side Tesseract removed.
-
-
-async function preprocessImageElement(img: HTMLImageElement): Promise<Blob> {
-  const maxWidth = 1500;
-  const scale = Math.min(1, maxWidth / img.width);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(img.width * scale);
-  canvas.height = Math.round(img.height * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Unable to get canvas context");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return preprocessCanvas(canvas);
-}
 
 async function preprocessCanvas(source: HTMLCanvasElement): Promise<Blob> {
   const canvas = document.createElement("canvas");
@@ -180,19 +168,19 @@ export default function S3Uploader() {
   };
 
   return (
-    <div className="p-6 bg-white rounded shadow max-w-md">
-      <h2 className="font-semibold mb-2">Upload image to S3</h2>
-      <input type="file" accept="image/*,application/pdf" onChange={handleFile} />
-      <div className="mt-3 flex gap-2">
+    <div className={styles.container}>
+      <h2 className={styles.title}>Upload image to S3</h2>
+      <input className={styles.fileInput} type="file" accept="image/*,application/pdf" onChange={handleFile} />
+      <div className={styles.actions}>
         <button
-          className="px-4 py-2 bg-gray-600 text-white rounded"
+          className={`${styles.button} ${styles.secondary} ${(!file || ocring) ? styles.disabled : ""}`}
           onClick={extractText}
           disabled={!file || ocring}
         >
           {ocring ? `Extracting (${ocrProgress}%)` : "Extract text"}
         </button>
         <button
-          className="px-4 py-2 bg-blue-600 text-white rounded"
+          className={`${styles.button} ${styles.primary} ${(!file || uploading) ? styles.disabled : ""}`}
           onClick={upload}
           disabled={!file || uploading}
         >
@@ -201,17 +189,17 @@ export default function S3Uploader() {
       </div>
 
       {ocrText && (
-        <div className="mt-3">
-          <h3 className="font-medium">Extracted text</h3>
+        <div className={styles.extracted}>
+          <h3 className={styles.title}>Extracted text</h3>
           <textarea
             readOnly
             value={ocrText}
-            className="w-full h-48 p-2 bg-gray-50 mt-2"
+            className={styles.textarea}
           />
         </div>
       )}
 
-      {message && <div className="mt-3 text-sm">{message}</div>}
+      {message && <div className={styles.message}>{message}</div>}
     </div>
   );
 }

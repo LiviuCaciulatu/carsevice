@@ -1,0 +1,129 @@
+.container {
+  padding: 1.5rem;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  max-width: 520px;
+  margin: 0 auto;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+}
+
+.fileInput {
+  display: block;
+  width: 100%;
+}
+
+.actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.primary {
+  background: #2563eb; /* blue-600 */
+  color: #fff;
+}
+
+.secondary {
+  background: #374151; /* gray-700 */
+  color: #fff;
+}
+
+.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button:hover:not(.disabled) {
+  filter: brightness(0.95);
+}
+
+.success {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: #065f46; /* emerald-800 */
+  background: #ecfdf5; /* emerald-50 */
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #d1fae5;
+}
+
+.error {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: #b91c1c; /* red-700 */
+  background: #fff1f2; /* red-50 */
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+.progressWrap {
+  margin-top: 0.75rem;
+}
+
+.progress {
+  width: 100%;
+  height: 10px;
+  appearance: none;
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #e5e7eb, #e5e7eb);
+}
+
+.progress::-webkit-progress-bar {
+  background: #e5e7eb;
+}
+
+.progress::-webkit-progress-value {
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .actions {
+    flex-direction: column;
+  }
+  .button {
+    width: 100%;
+  }
+}
+
+.extracted {
+  margin-top: 0.75rem;
+}
+
+.textarea {
+  width: 100%;
+  height: 12rem;
+  padding: 0.5rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.message {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: #374151;
+}

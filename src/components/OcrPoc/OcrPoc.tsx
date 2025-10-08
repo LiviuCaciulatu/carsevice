@@ -646,7 +646,7 @@ export default function OcrPoc() {
       <div className={styles.ocrCard}>
         <h1 className={`${styles.ocrTitle} text-2xl mb-4`}>Document OCR POC</h1>
 
-        <label className="block mb-4">
+        <label className={`${styles.controls}`}>
           <span className="block text-sm font-medium text-slate-700">
             Upload ID or Registration (image or PDF)
           </span>
@@ -657,8 +657,8 @@ export default function OcrPoc() {
             className="mt-2"
           />
         </label>
-        <div className="mb-4 flex items-center gap-3">
-          <label className="flex items-center gap-2">
+        <div className={`${styles.controls}`}>
+          <label className={styles.checkboxLabel}>
             <input
               type="checkbox"
               checked={autoContrast}
@@ -700,7 +700,7 @@ export default function OcrPoc() {
               </button>
             </div>
 
-            <div className="border p-2 inline-block">
+            <div className={styles.canvasWrapper}>
               <canvas
                 ref={previewRef}
                 style={{ maxWidth: "50%", cursor: "crosshair" }}
@@ -711,14 +711,14 @@ export default function OcrPoc() {
             </div>
 
             {selection && (
-              <div className="text-sm text-slate-600 mt-2">
+              <div className={styles.selectionInfo}>
                 Selection: x={selection.x}, y={selection.y}, w={selection.w}, h=
                 {selection.h}
               </div>
             )}
 
             {selectionOcrText && (
-              <div className="mt-2">
+              <div className={styles.selectionResult}>
                 <div className="text-sm font-medium">Selection OCR result</div>
                 <pre className="bg-gray-50 p-2 rounded">{selectionOcrText}</pre>
               </div>
@@ -727,39 +727,38 @@ export default function OcrPoc() {
         )}
 
         {loading && (
-          <div className="mb-4">
+          <div className={styles.progressWrap}>
             <div>OCR in progress: {progress}%</div>
             <progress value={progress} max={100} className="w-full"></progress>
           </div>
         )}
 
-        {error && <div className="text-red-600 mb-4">Error: {error}</div>}
+  {error && <div className={styles.error}>Error: {error}</div>}
 
         {extracted && (
           <div className="space-y-4">
-            <div>
-              <h2 className="font-semibold">Parsed Fields</h2>
-              <pre className="bg-gray-100 p-3 rounded">
-                {JSON.stringify({ ...extracted, rawText: undefined }, null, 2)}
-              </pre>
-            </div>
+            <div className={styles.parsedFields}>
+              <div>
+                <h2 className="font-semibold">Parsed Fields</h2>
+                <pre className="bg-gray-100 p-3 rounded">
+                  {JSON.stringify({ ...extracted, rawText: undefined }, null, 2)}
+                </pre>
+              </div>
 
-            <div>
-              <h2 className="font-semibold">Raw OCR Text</h2>
-              <textarea
-                className="w-full h-48 p-3 bg-gray-50"
-                value={extracted.rawText}
-                readOnly
-              />
-            </div>
+              <div>
+                <h2 className="font-semibold">Raw OCR Text</h2>
+                <textarea
+                  className={styles.rawTextArea}
+                  value={extracted.rawText}
+                  readOnly
+                />
+              </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={downloadJSON}
-                className="px-4 py-2 bg-blue-600 text-white rounded"
-              >
-                Download JSON
-              </button>
+              <div className={styles.actions}>
+                <button onClick={downloadJSON} className={styles.btnPrimary}>
+                  Download JSON
+                </button>
+              </div>
             </div>
           </div>
         )}
