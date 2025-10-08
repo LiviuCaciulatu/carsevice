@@ -40,6 +40,7 @@ export default function OcrPoc() {
   } | null>(null);
   const [selectedField, setSelectedField] = useState<string>("name");
   const [selectionOcrText, setSelectionOcrText] = useState<string | null>(null);
+  const [autoContrast, setAutoContrast] = useState<boolean>(true);
 
   async function runOCROnImage(file: File) {
     setError(null);
@@ -47,7 +48,11 @@ export default function OcrPoc() {
     setProgress(0);
     try {
       const img = await loadImageFromFile(file);
-      const preBlob = await preprocessImageElement(img);
+
+      // auto-rotate: detect best orientation then rotate the image before preprocessing
+      const bestRot = await detectBestRotationFromImage(img);
+  const rotatedCanvas = rotateCanvasImageElement(img, bestRot);
+  const preBlob = await preprocessCanvas(rotatedCanvas, { autoContrast });
 
       const { data } = await Tesseract.recognize(preBlob, "eng", {
         logger: (m) => {
@@ -75,15 +80,19 @@ export default function OcrPoc() {
     try {
       const array = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: array }).promise;
-      const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: 2 });
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(viewport.width);
-      canvas.height = Math.round(viewport.height);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Unable to get canvas context");
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      const preBlob = await preprocessCanvas(canvas);
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Unable to get canvas context");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  // auto-rotate PDF page canvas
+  const bestRotPdf = await detectBestRotationFromCanvas(canvas);
+  const rotated = rotateCanvas(canvas, bestRotPdf);
+  const preBlob = await preprocessCanvas(rotated, { autoContrast });
       setPreviewBlob(preBlob);
       await ocrBlob(preBlob);
     } catch (e: any) {
@@ -128,6 +137,167 @@ export default function OcrPoc() {
     });
   }
 
+  // Rotate an existing canvas by 0/90/180/270 degrees (clockwise) and return a new canvas
+  function rotateCanvas(src: HTMLCanvasElement, degrees: number) {
+    const d = ((degrees % 360) + 360) % 360;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Unable to get canvas context");
+    if (d === 90 || d === 270) {
+      canvas.width = src.height;
+      canvas.height = src.width;
+    } else {
+      canvas.width = src.width;
+      canvas.height = src.height;
+    }
+    ctx.save();
+    if (d === 90) {
+      ctx.translate(canvas.width, 0);
+      ctx.rotate((90 * Math.PI) / 180);
+    } else if (d === 180) {
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate((180 * Math.PI) / 180);
+    } else if (d === 270) {
+      ctx.translate(0, canvas.height);
+      ctx.rotate((270 * Math.PI) / 180);
+    }
+    ctx.drawImage(src, 0, 0);
+    ctx.restore();
+    return canvas;
+  }
+
+  // Create a canvas from an Image element and rotate it
+  function rotateCanvasImageElement(img: HTMLImageElement, degrees: number) {
+    const canvas = document.createElement("canvas");
+    if (degrees === 90 || degrees === 270) {
+      canvas.width = img.height;
+      canvas.height = img.width;
+    } else {
+      canvas.width = img.width;
+      canvas.height = img.height;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Unable to get canvas context");
+    ctx.save();
+    const d = ((degrees % 360) + 360) % 360;
+    if (d === 90) {
+      ctx.translate(canvas.width, 0);
+      ctx.rotate((90 * Math.PI) / 180);
+    } else if (d === 180) {
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate((180 * Math.PI) / 180);
+    } else if (d === 270) {
+      ctx.translate(0, canvas.height);
+      ctx.rotate((270 * Math.PI) / 180);
+    }
+    ctx.drawImage(img, 0, 0, img.width, img.height);
+    ctx.restore();
+    return canvas;
+  }
+
+  // run a fast OCR on a blob/canvas and return a simple score based on letters/numbers count
+  async function fastOcrScore(blob: Blob) {
+    try {
+      // prefer a quick recognition with tessedit pageseg_mode 6 (single block)
+      const { data } = await Tesseract.recognize(blob, "eng", {
+        tessedit_pageseg_mode: "6",
+        logger: () => {},
+      } as any);
+      const text = data.text || "";
+      // score by count of letters and digits
+      const match = text.match(/[A-Za-z0-9]/g);
+      return match ? match.length : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Try rotations on an Image element and return the best rotation (0/90/180/270)
+  async function detectBestRotationFromImage(img: HTMLImageElement) {
+    // make small thumbnail for speed
+    const thumbW = 600;
+    const scale = Math.min(1, thumbW / img.width);
+    const baseCanvas = document.createElement("canvas");
+    baseCanvas.width = Math.round(img.width * scale);
+    baseCanvas.height = Math.round(img.height * scale);
+    const ctx = baseCanvas.getContext("2d");
+    if (!ctx) return 0;
+    ctx.drawImage(img, 0, 0, baseCanvas.width, baseCanvas.height);
+
+    const rotations = [0, 90, 180, 270];
+    const scores: Record<number, number> = {};
+    for (const r of rotations) {
+      const rotated = rotateCanvas(baseCanvas, r);
+      const blob: Blob = await new Promise((res) =>
+        rotated.toBlob((b) => res(b as Blob), "image/png")
+      );
+      scores[r] = await fastOcrScore(blob);
+    }
+    const baseline = scores[0] || 0;
+    let best = 0;
+    let bestScore = baseline;
+    for (const r of rotations) {
+      if ((scores[r] || 0) > bestScore) {
+        bestScore = scores[r];
+        best = r;
+      }
+    }
+    // conservative thresholds: require both a ratio and an absolute delta
+    const ratioThreshold = 1.4; // best must be 40% better than 0°
+    const absThreshold = 20; // and at least 20 more character matches
+    if (best === 0) return 0;
+    if (bestScore < 10) return 0; // not enough text to trust
+    if (baseline === 0) {
+      // if baseline had no text but best has some, only rotate if bestScore is reasonably large
+      return bestScore >= absThreshold ? best : 0;
+    }
+    if (bestScore >= baseline * ratioThreshold && bestScore - baseline >= absThreshold) {
+      return best;
+    }
+    return 0;
+  }
+
+  // Try rotations on a canvas and return best rotation
+  async function detectBestRotationFromCanvas(src: HTMLCanvasElement) {
+    const thumbW = 600;
+    const scale = Math.min(1, thumbW / src.width);
+    const base = document.createElement("canvas");
+    base.width = Math.round(src.width * scale);
+    base.height = Math.round(src.height * scale);
+    const ctx = base.getContext("2d");
+    if (!ctx) return 0;
+    ctx.drawImage(src, 0, 0, base.width, base.height);
+    const rotations = [0, 90, 180, 270];
+    const scores: Record<number, number> = {};
+    for (const r of rotations) {
+      const rotated = rotateCanvas(base, r);
+      const blob: Blob = await new Promise((res) =>
+        rotated.toBlob((b) => res(b as Blob), "image/png")
+      );
+      scores[r] = await fastOcrScore(blob);
+    }
+    const baseline = scores[0] || 0;
+    let best = 0;
+    let bestScore = baseline;
+    for (const r of rotations) {
+      if ((scores[r] || 0) > bestScore) {
+        bestScore = scores[r];
+        best = r;
+      }
+    }
+    const ratioThreshold = 1.4;
+    const absThreshold = 20;
+    if (best === 0) return 0;
+    if (bestScore < 10) return 0;
+    if (baseline === 0) {
+      return bestScore >= absThreshold ? best : 0;
+    }
+    if (bestScore >= baseline * ratioThreshold && bestScore - baseline >= absThreshold) {
+      return best;
+    }
+    return 0;
+  }
+
   async function preprocessImageElement(img: HTMLImageElement): Promise<Blob> {
     const maxWidth = 1500;
     const scale = Math.min(1, maxWidth / img.width);
@@ -140,7 +310,10 @@ export default function OcrPoc() {
     return preprocessCanvas(canvas);
   }
 
-  async function preprocessCanvas(source: HTMLCanvasElement): Promise<Blob> {
+  async function preprocessCanvas(
+    source: HTMLCanvasElement,
+    options: { autoContrast?: boolean } = { autoContrast: true }
+  ): Promise<Blob> {
     const canvas = document.createElement("canvas");
     canvas.width = source.width;
     canvas.height = source.height;
@@ -152,16 +325,63 @@ export default function OcrPoc() {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
-    const contrast = 1.15;
+    // Compute luminance stats (min, max, mean, stddev)
+    let minL = 255;
+    let maxL = 0;
+    let sum = 0;
+    let sumSq = 0;
+    let pxCount = 0;
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
-      // luminance
       const l = 0.299 * r + 0.587 * g + 0.114 * b;
-      let c = ((l / 255 - 0.5) * contrast + 0.5) * 255;
-      c = Math.max(0, Math.min(255, c));
-      data[i] = data[i + 1] = data[i + 2] = c;
+      minL = Math.min(minL, l);
+      maxL = Math.max(maxL, l);
+      sum += l;
+      sumSq += l * l;
+      pxCount++;
+    }
+    const mean = pxCount ? sum / pxCount : 0;
+    const variance = pxCount ? sumSq / pxCount - mean * mean : 0;
+    const stddev = Math.sqrt(Math.max(0, variance));
+    const range = maxL - minL;
+
+    // Decide enhancement strategy (only when enabled):
+    const auto = options.autoContrast !== false;
+    // Decide enhancement strategy:
+    // - If dynamic range is very low, do linear stretch to full 0-255
+    // - Otherwise apply a mild-to-strong contrast multiplier when stddev is small
+  const lowRangeThreshold = 60; // if max-min < this, consider stretch
+  // Force a 50% contrast increase when autoContrast is enabled.
+  // Both mild and strong contrast factors set to 1.5 (50% boost).
+  const strongContrast = 3;
+  const mildContrast = 3;
+    if (auto) {
+      if (range > 0 && range < lowRangeThreshold) {
+        // linear stretch
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const l = 0.299 * r + 0.587 * g + 0.114 * b;
+          let c = ((l - minL) / range) * 255;
+          c = Math.max(0, Math.min(255, c));
+          data[i] = data[i + 1] = data[i + 2] = c;
+        }
+      } else {
+        // adaptive contrast: stronger when stddev is small
+        const contrast = stddev < 45 ? strongContrast : mildContrast;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const l = 0.299 * r + 0.587 * g + 0.114 * b;
+          let c = ((l / 255 - 0.5) * contrast + 0.5) * 255;
+          c = Math.max(0, Math.min(255, c));
+          data[i] = data[i + 1] = data[i + 2] = c;
+        }
+      }
     }
 
     const width = canvas.width;
@@ -213,6 +433,28 @@ export default function OcrPoc() {
       }
     })();
   }, [previewBlob, selection]);
+
+  // when autoContrast toggles and we have a previewBlob, re-run preprocessing+OCR
+  useEffect(() => {
+    if (!previewBlob) return;
+    (async () => {
+      try {
+        // convert previewBlob to image, build canvas, preprocess with new option, and OCR
+        const img = await loadImageFromFile(previewBlob);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const preBlob = await preprocessCanvas(canvas, { autoContrast });
+        setPreviewBlob(preBlob);
+        await ocrBlob(preBlob);
+      } catch (e) {
+        // ignore for now
+      }
+    })();
+  }, [autoContrast]);
 
   function toCanvasCoords(e: React.MouseEvent<HTMLCanvasElement, MouseEvent>) {
     const canvas = previewRef.current!;
@@ -415,6 +657,16 @@ export default function OcrPoc() {
             className="mt-2"
           />
         </label>
+        <div className="mb-4 flex items-center gap-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={autoContrast}
+              onChange={(e) => setAutoContrast(e.target.checked)}
+            />
+            <span className="text-sm">Auto-enhance contrast</span>
+          </label>
+        </div>
 
         {previewBlob && (
           <div className="mb-4">
@@ -451,7 +703,7 @@ export default function OcrPoc() {
             <div className="border p-2 inline-block">
               <canvas
                 ref={previewRef}
-                style={{ maxWidth: "100%", cursor: "crosshair" }}
+                style={{ maxWidth: "50%", cursor: "crosshair" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
