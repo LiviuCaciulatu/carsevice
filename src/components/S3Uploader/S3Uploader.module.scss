@@ -127,3 +127,37 @@
   font-size: 0.875rem;
   color: #374151;
 }
+
+/* Parsed fields grid */
+.parsedGrid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+
+.fieldRow {
+  display: flex;
+  flex-direction: column;
+}
+
+.fieldLabel {
+  font-size: 0.75rem;
+  color: #374151;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.fieldInput {
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .parsedGrid {
+    grid-template-columns: 1fr;
+  }
+}

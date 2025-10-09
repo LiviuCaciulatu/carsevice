@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import styles from "./S3Uploader.module.scss";
+import parseRomanianId, { ParsedRomanianId } from "@/lib/parseRomanianId";
 // Using server-side AWS Textract for extraction; client-side Tesseract removed.
 
 async function preprocessCanvas(source: HTMLCanvasElement): Promise<Blob> {
@@ -61,6 +62,21 @@ export default function S3Uploader() {
   const [ocring, setOcring] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrText, setOcrText] = useState<string | null>(null);
+  const [parsed, setParsed] = useState<ParsedRomanianId | null>(null);
+
+  useEffect(() => {
+    if (ocrText) {
+      try {
+        const p = parseRomanianId(ocrText);
+        setParsed(p);
+      } catch (err) {
+        console.error('parse error', err);
+        setParsed(null);
+      }
+    } else {
+      setParsed(null);
+    }
+  }, [ocrText]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -191,11 +207,35 @@ export default function S3Uploader() {
       {ocrText && (
         <div className={styles.extracted}>
           <h3 className={styles.title}>Extracted text</h3>
-          <textarea
-            readOnly
-            value={ocrText}
-            className={styles.textarea}
-          />
+          <textarea readOnly value={ocrText} className={styles.textarea} />
+          {parsed && (
+            <div className={styles.parsedGrid}>
+              {(
+                [
+                  ['country','Country'],
+                  ['serie','Serie'],
+                  ['number','Number'],
+                  ['lastName','Last name'],
+                  ['firstName','First name'],
+                  ['nationality','Nationality'],
+                  ['sex','Sex'],
+                  ['birthPlace','Birth place'],
+                  ['address','Address'],
+                  ['issuedBy','Issued by'],
+                  ['validity','Validity'],
+                ] as [keyof ParsedRomanianId, string][]
+              ).map(([k, label]) => (
+                <label key={k} className={styles.fieldRow}>
+                  <span className={styles.fieldLabel}>{label}</span>
+                  <input
+                    className={styles.fieldInput}
+                    value={(parsed as any)[k] ?? ''}
+                    onChange={(e) => setParsed((cur) => ({ ...(cur ?? {}), [k]: e.target.value }))}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
