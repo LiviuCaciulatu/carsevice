@@ -98,12 +98,8 @@ function extractLabelStrict(
           const idx = nOrig.indexOf(lab);
           if (idx >= 0) {
             const after = origLine.substring(idx + lab.length).trim();
-            // If the label line itself is a multi-language label (contains many
-            // label tokens or starts with a '/'), don't treat the remainder as a value.
             const labelCount = ulabels.reduce((c, l) => (nOrig.includes(l) ? c + 1 : c), 0);
             if (after && !after.startsWith('/') && labelCount <= 1) {
-              // If remainder contains translations separated by '/', try to
-              // pick the first segment that does NOT look like a label.
               if (after.includes('/')) {
                 const segs = after.split('/').map((s) => s.trim()).filter(Boolean);
                 for (const seg of segs) {
@@ -112,7 +108,6 @@ function extractLabelStrict(
                   if (labelKeywords.test(useg)) continue;
                   return normalizeLine(seg);
                 }
-                // none of the segments looked like a value; fall through
               } else {
                 const normAfter = normalizeForMatch(after);
                 if (!labelKeywords.test(normAfter)) return normalizeLine(after);
@@ -129,12 +124,10 @@ function extractLabelStrict(
           if (!cand) continue;
           const ucand = normalizeForMatch(cand);
 
-          // skip noise lines (like a solitary 'M' after nationality)
           if (opts.skipNoiseLines && opts.skipNoiseLines.test(cand)) {
             continue;
           }
 
-          // skip any candidate that matches one of the provided skip patterns
           if (opts.skipPatterns) {
             let skipIt = false;
             for (const p of opts.skipPatterns) {
@@ -146,32 +139,25 @@ function extractLabelStrict(
             if (skipIt) continue;
           }
 
-          // If the candidate contains any of the requested label tokens (e.g. the
-          // translations of the same label), skip it — this prevents returning
-          // '/Lieu de naissance/Place of birth' as the value for birthPlace.
           if (ulabels.some((lab) => ucand.includes(lab))) {
             continue;
           }
 
           if (labelKeywords.test(ucand)) {
             if (opts.allowOneLabelSkip && !skippedLabel) {
-              // record skipping one label, but continue to the next line
               skippedLabel = true;
               continue;
             }
             break;
           }
-          // Stop if we hit machine-readable zone (MRZ) or obvious ID blobs
           const mrzLike = /<<|<[A-Z0-9<]{6,}|IDROU|ID[A-Z0-9]{3,}/i;
           if (mrzLike.test(cand)) break;
 
-          // avoid pushing consecutive duplicates (normalized)
           const last = parts.length ? normalizeForMatch(parts[parts.length - 1]) : null;
           const now = normalizeForMatch(cand);
           if (last !== now) parts.push(cand);
         }
         if (parts.length) {
-          // dedupe parts by normalized form while preserving order
           const seen = new Set<string>();
           const uniq: string[] = [];
           for (const p of parts) {
@@ -201,7 +187,6 @@ export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {})
     try {
       console.log(`[parseRomanianId] ${label} =>`, value);
     } catch (e) {
-      // ignore logging errors
     }
   };
 
@@ -305,7 +290,6 @@ export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {})
 
   const val = extractLabelStrict(rawLines, ["Valabilitate", "Validite", "Validity"], 3);
   if (val) {
-    // If the validity contains a date-range, trim to the first date-range found
     const mrange = val.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/);
     if (mrange) {
       res.validity = `${mrange[1]}-${mrange[2]}`;

@@ -4,56 +4,6 @@ import React, { useEffect, useState } from "react";
 import styles from "./S3Uploader.module.scss";
 import parseRomanianId, { ParsedRomanianId } from "@/lib/parseRomanianId";
 
-async function preprocessCanvas(source: HTMLCanvasElement): Promise<Blob> {
-  const canvas = document.createElement("canvas");
-  canvas.width = source.width;
-  canvas.height = source.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Unable to get canvas context");
-
-  ctx.drawImage(source, 0, 0);
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  const contrast = 1.15;
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const l = 0.299 * r + 0.587 * g + 0.114 * b;
-    let c = ((l / 255 - 0.5) * contrast + 0.5) * 255;
-    c = Math.max(0, Math.min(255, c));
-    data[i] = data[i + 1] = data[i + 2] = c;
-  }
-
-  const width = canvas.width;
-  const height = canvas.height;
-  const copy = new Uint8ClampedArray(data);
-  const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      let idx = (y * width + x) * 4;
-      let accum = 0;
-      let k = 0;
-      for (let ky = -1; ky <= 1; ky++) {
-        for (let kx = -1; kx <= 1; kx++) {
-          const srcIdx = ((y + ky) * width + (x + kx)) * 4;
-          accum += copy[srcIdx] * kernel[k++];
-        }
-      }
-      const val = Math.max(0, Math.min(255, accum));
-      data[idx] = data[idx + 1] = data[idx + 2] = val;
-    }
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-
-  return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
-  });
-}
-
 export default function S3Uploader() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -69,7 +19,6 @@ export default function S3Uploader() {
       try {
         const p = parseRomanianId(ocrText, { debug: true });
         setParsed(p);
-        // build an array of key/value pairs from the parsed object and log it
         const keys: (keyof ParsedRomanianId)[] = [
           'country',
           'serie',
@@ -202,7 +151,7 @@ export default function S3Uploader() {
 
   return (
     <div className={styles.container}>
-      <h2 className={styles.title}>Upload image to S3</h2>
+      <h2 className={styles.title}>Încarcă fișier în S3</h2>
       <input className={styles.fileInput} type="file" accept="image/*,application/pdf" onChange={handleFile} />
       <div className={styles.actions}>
         <button
@@ -210,36 +159,35 @@ export default function S3Uploader() {
           onClick={extractText}
           disabled={!file || ocring}
         >
-          {ocring ? `Extracting (${ocrProgress}%)` : "Extract text"}
+          {ocring ? `Extracție (${ocrProgress}%)` : "Extrage text"}
         </button>
         <button
           className={`${styles.button} ${styles.primary} ${(!file || uploading) ? styles.disabled : ""}`}
           onClick={upload}
           disabled={!file || uploading}
         >
-          {uploading ? "Uploading..." : "Upload"}
+          {uploading ? "Se încarcă..." : "Încarcă"}
         </button>
       </div>
 
       {ocrText && (
         <div className={styles.extracted}>
-          <h3 className={styles.title}>Extracted text</h3>
-          <textarea readOnly value={ocrText} className={styles.textarea} />
+          <h3 className={styles.title}>Text extras</h3>
           {parsed && (
             <div className={styles.parsedGrid}>
               {(
                 [
-                  ['country','Country'],
+                  ['country','Țară'],
                   ['serie','Serie'],
-                  ['number','Number'],
-                  ['lastName','Last name'],
-                  ['firstName','First name'],
-                  ['nationality','Nationality'],
+                  ['number','Număr'],
+                  ['lastName','Nume'],
+                  ['firstName','Prenume'],
+                  ['nationality','Cetățenie'],
                   ['cnp','CNP'],
-                  ['birthPlace','Birth place'],
-                  ['address','Address'],
-                  ['issuedBy','Issued by'],
-                  ['validity','Validity'],
+                  ['birthPlace','Loc naștere'],
+                  ['address','Domiciliu'],
+                  ['issuedBy','Eliberat de'],
+                  ['validity','Valabilitate'],
                 ] as [keyof ParsedRomanianId, string][]
               ).map(([k, label]) => (
                 <label key={k} className={styles.fieldRow}>
