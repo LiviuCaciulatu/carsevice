@@ -23,7 +23,6 @@ export async function POST(req: Request) {
         if (b.BlockType === "LINE" && b.Text) allLines.push(b.Text);
       }
       nextToken = (out as any).NextToken;
-      // if job is still IN_PROGRESS, break early and return status
       if (status === "IN_PROGRESS") break;
     } while (nextToken);
 

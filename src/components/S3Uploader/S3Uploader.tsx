@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import styles from "./S3Uploader.module.scss";
 import parseRomanianId, { ParsedRomanianId } from "@/lib/parseRomanianId";
-// Using server-side AWS Textract for extraction; client-side Tesseract removed.
 
 async function preprocessCanvas(source: HTMLCanvasElement): Promise<Blob> {
   const canvas = document.createElement("canvas");
@@ -63,12 +62,32 @@ export default function S3Uploader() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrText, setOcrText] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedRomanianId | null>(null);
+  const [extractedPairs, setExtractedPairs] = useState<Array<{ key: string; value: string }>>([]);
 
   useEffect(() => {
     if (ocrText) {
       try {
-        const p = parseRomanianId(ocrText);
+        const p = parseRomanianId(ocrText, { debug: true });
         setParsed(p);
+        // build an array of key/value pairs from the parsed object and log it
+        const keys: (keyof ParsedRomanianId)[] = [
+          'country',
+          'serie',
+          'number',
+          'lastName',
+          'firstName',
+          'nationality',
+          'cnp',
+          'birthPlace',
+          'address',
+          'issuedBy',
+          'validity',
+        ];
+        const pairs = keys.map((k) => ({ key: String(k), value: (p as any)[k] ?? '' }));
+        setExtractedPairs(pairs);
+        try {
+          console.log('extractedPairs', pairs);
+        } catch (e) {}
       } catch (err) {
         console.error('parse error', err);
         setParsed(null);
@@ -129,10 +148,9 @@ export default function S3Uploader() {
       if (json.rawText) {
         setOcrText(json.rawText);
       } else if (json.jobId) {
-        // Poll status endpoint for async PDF jobs
         setMessage(`Started Textract job ${json.jobId}. Waiting for result...`);
         const jobId = json.jobId as string;
-        const maxAttempts = 30; // poll up to ~1 minute
+        const maxAttempts = 30;
         let attempts = 0;
         let finished = false;
         while (attempts < maxAttempts && !finished) {
@@ -163,7 +181,6 @@ export default function S3Uploader() {
             }
           } catch (err: any) {
             setMessage(`Error checking job status: ${err?.message || String(err)}`);
-            // continue trying until attempts exhausted
           }
           attempts++;
         }
@@ -218,7 +235,7 @@ export default function S3Uploader() {
                   ['lastName','Last name'],
                   ['firstName','First name'],
                   ['nationality','Nationality'],
-                  ['sex','Sex'],
+                  ['cnp','CNP'],
                   ['birthPlace','Birth place'],
                   ['address','Address'],
                   ['issuedBy','Issued by'],

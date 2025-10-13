@@ -6,7 +6,7 @@ export type ParsedRomanianId = {
   firstName?: string;
   nationality?: string;
   nationalityNormalized?: string;
-  sex?: string;
+  cnp?: string;
   birthPlace?: string;
   address?: string;
   issuedBy?: string;
@@ -32,33 +32,45 @@ function findLabelValue(lines: string[], labels: string[]) {
     for (const lab of ulabels) {
       if (u.includes(lab)) {
         const searchingForSex = ulabels.some((x) => /SEX/.test(x));
+
+        try {
+          const origLine = lines[i];
+          const idx = normalizeForMatch(origLine).indexOf(lab);
+          if (idx >= 0) {
+            const after = origLine.substring(idx + lab.length).trim();
+            if (after) {
+              const normAfter = normalizeForMatch(after);
+              if (!labelKeywords.test(normAfter)) return normalizeLine(after);
+            }
+          }
+        } catch (e) {
+        }
         for (let j = i + 1; j < lines.length; j++) {
           const raw = lines[j];
           const cand = normalizeLine(raw);
           if (!cand) continue;
           const ucand = normalizeForMatch(cand);
 
-          // Determine if this line looks like a label
+
           const hasLabelKeyword = labelKeywords.test(ucand);
           const hasSlash = ucand.includes('/');
 
-          // If the line has a slash but no label keywords, it's likely a multi-lang value (e.g. "Română / ROU") -> accept
+
           if (hasSlash && !hasLabelKeyword) return cand;
 
           if (searchingForSex) {
-            // Prefer single-letter M/F (may appear one or two lines after label)
             if (/^\s*[MF]\s*$/i.test(cand)) return cand;
-            // If this candidate looks like a label, skip it
+
             if (hasLabelKeyword) continue;
-            // If candidate is short (1-3 chars) accept as possible sex token
+
             if (/^\s*\w{1,3}\s*$/.test(cand)) return cand;
-            // otherwise keep scanning
+
             continue;
           }
 
-          // For general labels: skip lines that have label keywords
+
           if (hasLabelKeyword) continue;
-          // Accept this candidate as value
+
           return cand;
         }
         return undefined;
@@ -68,11 +80,130 @@ function findLabelValue(lines: string[], labels: string[]) {
   return undefined;
 }
 
-export function parseRomanianId(rawText: string): ParsedRomanianId {
+function extractLabelStrict(
+  lines: string[],
+  labels: string[],
+  maxLines = 3,
+  opts: { skipNoiseLines?: RegExp | null; allowOneLabelSkip?: boolean; skipPatterns?: RegExp[] } = { skipNoiseLines: null, allowOneLabelSkip: false, skipPatterns: undefined }
+) {
+  const ulabels = labels.map((l) => normalizeForMatch(l));
+  const labelKeywords = /\b(NUME|NOM|PRENUME|PRENOM|SEX|SEXE|CETATENIE|NATIONAL|NATIONALIT|DOMICILIU|DOMICILE|LOC NAST|LOC NA(S)?TER|EMISA|EMIS|VALAB|VALABILITATE|SERIA|NR|CNP)\b/;
+  for (let i = 0; i < lines.length; i++) {
+    const u = normalizeForMatch(lines[i]);
+    for (const lab of ulabels) {
+      if (u.includes(lab)) {
+        try {
+          const origLine = lines[i];
+          const nOrig = normalizeForMatch(origLine);
+          const idx = nOrig.indexOf(lab);
+          if (idx >= 0) {
+            const after = origLine.substring(idx + lab.length).trim();
+            // If the label line itself is a multi-language label (contains many
+            // label tokens or starts with a '/'), don't treat the remainder as a value.
+            const labelCount = ulabels.reduce((c, l) => (nOrig.includes(l) ? c + 1 : c), 0);
+            if (after && !after.startsWith('/') && labelCount <= 1) {
+              // If remainder contains translations separated by '/', try to
+              // pick the first segment that does NOT look like a label.
+              if (after.includes('/')) {
+                const segs = after.split('/').map((s) => s.trim()).filter(Boolean);
+                for (const seg of segs) {
+                  const useg = normalizeForMatch(seg);
+                  if (ulabels.some((lab2) => useg.includes(lab2))) continue;
+                  if (labelKeywords.test(useg)) continue;
+                  return normalizeLine(seg);
+                }
+                // none of the segments looked like a value; fall through
+              } else {
+                const normAfter = normalizeForMatch(after);
+                if (!labelKeywords.test(normAfter)) return normalizeLine(after);
+              }
+            }
+          }
+        } catch (e) {}
+
+        const parts: string[] = [];
+        let skippedLabel = false;
+        for (let j = i + 1; j < Math.min(lines.length, i + 1 + maxLines + (opts.allowOneLabelSkip ? 1 : 0)); j++) {
+          const candRaw = lines[j];
+          let cand = normalizeLine(candRaw);
+          if (!cand) continue;
+          const ucand = normalizeForMatch(cand);
+
+          // skip noise lines (like a solitary 'M' after nationality)
+          if (opts.skipNoiseLines && opts.skipNoiseLines.test(cand)) {
+            continue;
+          }
+
+          // skip any candidate that matches one of the provided skip patterns
+          if (opts.skipPatterns) {
+            let skipIt = false;
+            for (const p of opts.skipPatterns) {
+              if (p.test(cand)) {
+                skipIt = true;
+                break;
+              }
+            }
+            if (skipIt) continue;
+          }
+
+          // If the candidate contains any of the requested label tokens (e.g. the
+          // translations of the same label), skip it — this prevents returning
+          // '/Lieu de naissance/Place of birth' as the value for birthPlace.
+          if (ulabels.some((lab) => ucand.includes(lab))) {
+            continue;
+          }
+
+          if (labelKeywords.test(ucand)) {
+            if (opts.allowOneLabelSkip && !skippedLabel) {
+              // record skipping one label, but continue to the next line
+              skippedLabel = true;
+              continue;
+            }
+            break;
+          }
+          // Stop if we hit machine-readable zone (MRZ) or obvious ID blobs
+          const mrzLike = /<<|<[A-Z0-9<]{6,}|IDROU|ID[A-Z0-9]{3,}/i;
+          if (mrzLike.test(cand)) break;
+
+          // avoid pushing consecutive duplicates (normalized)
+          const last = parts.length ? normalizeForMatch(parts[parts.length - 1]) : null;
+          const now = normalizeForMatch(cand);
+          if (last !== now) parts.push(cand);
+        }
+        if (parts.length) {
+          // dedupe parts by normalized form while preserving order
+          const seen = new Set<string>();
+          const uniq: string[] = [];
+          for (const p of parts) {
+            const key = normalizeForMatch(p);
+            if (!seen.has(key)) {
+              seen.add(key);
+              uniq.push(p);
+            }
+          }
+          return uniq.join(" ");
+        }
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {}): ParsedRomanianId {
   const rawLines = rawText.split(/\r?\n/).map((l) => normalizeLine(l)).filter(Boolean);
   const uLines = rawLines.map((l) => normalizeForMatch(l));
 
   const res: ParsedRomanianId = { rawLines };
+  const debug = !!opts.debug;
+  const log = (label: string, value: string | undefined) => {
+    if (!debug) return;
+    try {
+      console.log(`[parseRomanianId] ${label} =>`, value);
+    } catch (e) {
+      // ignore logging errors
+    }
+  };
 
 
   if (rawLines.length >= 3) res.country = rawLines[2];
@@ -80,6 +211,7 @@ export function parseRomanianId(rawText: string): ParsedRomanianId {
     const idx = uLines.findIndex((l) => /(ROMA|ROMANIA|ROUMANIE|ROU)/.test(l));
     if (idx >= 0) res.country = rawLines[idx];
   }
+  log('country', res.country);
 
   const joined = rawLines.join(" ");
   const uJoined = normalizeForMatch(joined);
@@ -95,6 +227,8 @@ export function parseRomanianId(rawText: string): ParsedRomanianId {
     if (sMatch) res.serie = sMatch[1];
     if (nMatch) res.number = nMatch[1];
   }
+  log('serie', res.serie);
+  log('number', res.number);
 
 
   if (!res.serie || !res.number) {
@@ -105,43 +239,49 @@ export function parseRomanianId(rawText: string): ParsedRomanianId {
     }
   }
 
-  // last name and first name
+
   const last = findLabelValue(rawLines, ["Nume", "NOM", "Last name", "NUME/NOM", "Nume/Nom", "Nume/Nom/Last name"]);
   const first = findLabelValue(rawLines, ["Prenume", "PRENOM", "First name", "Prenume/Prenom", "Prenume/Prenom/First name"]);
   if (last) res.lastName = last;
   if (first) res.firstName = first;
+  log('lastName', res.lastName);
+  log('firstName', res.firstName);
 
-  // nationality
-  const nat = findLabelValue(rawLines, ["Cetatenie", "Cetätenie", "Nationality", "Nationalite"]);
+
+  const nat = extractLabelStrict(rawLines, ["Cetatenie", "Cetätenie", "Nationality", "Nationalite"], 3, { skipNoiseLines: /^\s*[MF]\s*$/i, allowOneLabelSkip: true });
   if (nat) res.nationality = nat;
   else {
-    // try to find a short token like ROMANA / ROU
+
     const n = rawLines.find((l) => /\b(ROMAN|ROMANA|ROU|ROMANIA|ROMANIE)\b/i.test(l));
-    if (n) res.nationality = n;
+    if (n) res.nationality = n.split('/')[0].trim();
   }
 
-  // Normalize nationality: if it contains a slash (e.g. "Română / ROU"), pick the first token
+
   if (res.nationality) {
     const first = res.nationality.split('/')[0].trim();
     res.nationality = first;
-    // also provide a normalized ASCII lowercase variant
+
     res.nationalityNormalized = first.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase();
   }
+  log('nationality', res.nationality);
 
-  // sex
-  const sex = findLabelValue(rawLines, ["Sex", "SEXE", "Sexe"]);
-  if (sex) res.sex = sex.split(" ")[0];
-  else {
-    // find single-char M or F tokens
-    const m = rawLines.find((l) => /^\s*[MF]\s*$/i.test(l));
-    if (m) res.sex = m.trim();
+
+  const cnpLabel = findLabelValue(rawLines, ["CNP"]);
+  if (cnpLabel) {
+    const m = cnpLabel.match(/(\d{13})/);
+    if (m) res.cnp = m[1];
+  } else {
+    const globalMatch = joined.match(/\b(\d{13})\b/);
+    if (globalMatch) res.cnp = globalMatch[1];
   }
+  log('cnp', res.cnp);
 
-  // birth place
-  const born = findLabelValue(rawLines, ["Loc nastere", "Lieu de naissance", "Place of birth", "Loc nastere/Lieu de naissance/Place of birth"]);
+
+  const born = extractLabelStrict(rawLines, ["Loc nastere", "Lieu de naissance", "Place of birth", "Loc nastere/Lieu de naissance/Place of birth"], 3, { skipNoiseLines: null, allowOneLabelSkip: true });
   if (born) res.birthPlace = born;
+  log('birthPlace', res.birthPlace);
 
-  // address / domiciliu: capture the line after label and up to two following lines until we hit another label-ish line
+
   const addrIndex = rawLines.findIndex((l) => /DOMICILIU|DOMICILIU|DOMICILE|ADDRESS|ADRESSE/i.test(normalizeForMatch(l)));
   if (addrIndex >= 0) {
     const parts: string[] = [];
@@ -155,16 +295,26 @@ export function parseRomanianId(rawText: string): ParsedRomanianId {
     const addr = findLabelValue(rawLines, ["Domiciliu", "Domiciliu/Adresse/Address"]);
     if (addr) res.address = addr;
   }
+  log('address', res.address);
 
-  // issued by
-  const issued = findLabelValue(rawLines, ["Emisa de", "Delivree par", "Issued by", "Emis de"]);
+
+  const issued = extractLabelStrict(rawLines, ["Emisa de", "Delivree par", "Issued by", "Emis de"], 3, { skipNoiseLines: null, allowOneLabelSkip: true, skipPatterns: [/\d{1,2}\.\d{1,2}\.\d{2,4}/] });
   if (issued) res.issuedBy = issued;
+  log('issuedBy', res.issuedBy);
 
-  // validity
-  const val = findLabelValue(rawLines, ["Valabilitate", "Validite", "Validity"]);
-  if (val) res.validity = val;
 
-  // Parse validity range if present: formats like "17.01.17-06.05.2027" or "17.01.2017 - 06.05.2027"
+  const val = extractLabelStrict(rawLines, ["Valabilitate", "Validite", "Validity"], 3);
+  if (val) {
+    // If the validity contains a date-range, trim to the first date-range found
+    const mrange = val.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/);
+    if (mrange) {
+      res.validity = `${mrange[1]}-${mrange[2]}`;
+    } else {
+      res.validity = val;
+    }
+  }
+  log('validity', res.validity);
+
   if (res.validity) {
     const m = res.validity.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/);
     if (m) {
@@ -175,7 +325,7 @@ export function parseRomanianId(rawText: string): ParsedRomanianId {
         if (y.length === 2) {
           const yy = parseInt(y, 10);
           const nowYY = new Date().getFullYear() % 100;
-          // assume 19xx if yy > nowYY+10 else 20xx
+
           const full = yy > (nowYY + 10) ? 1900 + yy : 2000 + yy;
           y = String(full);
         }
@@ -187,6 +337,8 @@ export function parseRomanianId(rawText: string): ParsedRomanianId {
       if (s) res.validityStart = s;
       if (e) res.validityEnd = e;
     }
+    log('validityStart', res.validityStart);
+    log('validityEnd', res.validityEnd);
   }
 
   return res;

@@ -18,7 +18,6 @@ CACIULATU
 Prenume/Prenom/First name
 LIVIU-MARIUS
 Cetätenie/Nationalite/Nationality
-Sex/Sexe/Sex
 Română / ROU
 M
 Loc nastere/Lieu de naissance/Place of birth

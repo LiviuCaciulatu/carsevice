@@ -14,7 +14,6 @@ export async function POST(req: Request) {
     const filename = `${Date.now()}-${file.name}`;
     const arrayBuffer = await file.arrayBuffer();
 
-    // Upload to S3
     const s3 = new S3Client({ region: process.env.AWS_REGION });
     await s3.send(
       new PutObjectCommand({
@@ -25,7 +24,6 @@ export async function POST(req: Request) {
       })
     );
 
-    // PDFs: start async job when configured
     if (file.type === "application/pdf") {
       const snsTopicArn = process.env.AWS_TEXTRACT_SNS_TOPIC_ARN;
       const roleArn = process.env.AWS_TEXTRACT_ROLE_ARN;
@@ -42,7 +40,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ key: filename, note: "PDF uploaded. Async Textract processing not started (SNS/ROLE not configured)." });
     }
 
-    // For images: synchronous DetectDocumentText
     const tex = new (TextractPkg as any).TextractClient({ region: process.env.AWS_REGION });
     const cmd: any = new (TextractPkg as any).DetectDocumentTextCommand({ Document: { Bytes: new Uint8Array(arrayBuffer) } });
     const out: any = await tex.send(cmd as any);
