@@ -60,7 +60,8 @@ export default function S3Uploader() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/upload-s3", {
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const res = await fetch(`${apiBase}/api/upload-s3`, {
         method: "POST",
         body: form,
       });
@@ -83,9 +84,50 @@ export default function S3Uploader() {
     setOcrProgress(0);
     setOcrText(null);
     try {
+      let sendFile: File | null = file;
+
+      if (file.type === "application/pdf") {
+        setMessage("Rendering PDF to image for OCR...");
+        try {
+          const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf");
+          const arrayBuffer = await file.arrayBuffer();
+            let loadingTask: any;
+            try {
+              const resp = await fetch('/pdf.worker.min.js', { method: 'HEAD' });
+              if (resp.ok && pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+                loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+              } else {
+                loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true });
+              }
+            } catch (e) {
+              loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true });
+            }
+          const pdf = await loadingTask.promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Canvas context not available");
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.9));
+          if (!blob) throw new Error("Failed to create image from PDF page");
+          sendFile = new File([blob], file.name.replace(/\.pdf$/i, ".jpg"), { type: "image/jpeg" });
+          setMessage("PDF rendered to image — running OCR...");
+        } catch (err: any) {
+          console.error("PDF -> JPEG conversion failed", err);
+          setMessage(`PDF conversion error: ${err?.message || String(err)}`);
+          setOcring(false);
+          return;
+        }
+      }
+
       const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/extract-textract", {
+      form.append("file", sendFile as Blob);
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const res = await fetch(`${apiBase}/api/extract-textract`, {
         method: "POST",
         body: form,
       });
@@ -105,7 +147,7 @@ export default function S3Uploader() {
         while (attempts < maxAttempts && !finished) {
           try {
             await new Promise((r) => setTimeout(r, 2000));
-            const sres = await fetch("/api/textract-status", {
+            const sres = await fetch(`${apiBase}/api/textract-status`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ jobId }),

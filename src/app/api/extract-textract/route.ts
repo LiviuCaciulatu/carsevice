@@ -37,7 +37,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ key: filename, jobId: startOut.JobId });
       }
 
-      return NextResponse.json({ key: filename, note: "PDF uploaded. Async Textract processing not started (SNS/ROLE not configured)." });
+      // If SNS/ROLE are not configured, just upload the PDF and inform the user
+      return NextResponse.json({ 
+        key: filename, 
+        note: 'PDF uploaded to S3. Async Textract processing requires SNS/Role configuration. Please configure AWS_TEXTRACT_SNS_TOPIC_ARN and AWS_TEXTRACT_ROLE_ARN environment variables.' 
+      });
     }
 
     const tex = new (TextractPkg as any).TextractClient({ region: process.env.AWS_REGION });

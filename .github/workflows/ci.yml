@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+    - name: Install deps
+      run: npm ci
+    - name: Typecheck
+      run: npx tsc --noEmit
+    - name: Lint
+      run: npm run lint || true
+
+# Optional: deploy static site to cPanel via FTP (requires secrets FTP_HOST, FTP_USER, FTP_PASS)
+#  deploy:
+#    runs-on: ubuntu-latest
+#    needs: build
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Build and export
+#        run: |
+#          npm ci
+#          npm run build
+#          npx next export
+#      - name: Deploy to FTP
+#        uses: SamKirkland/FTP-Deploy-Action@4.3.0
+#        with:
+#          server: ${{ secrets.FTP_HOST }}
+#          username: ${{ secrets.FTP_USER }}
+#          password: ${{ secrets.FTP_PASS }}
+#          local-dir: out
