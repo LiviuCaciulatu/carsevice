@@ -44,4 +44,9 @@ This project can be deployed as a static frontend on cPanel and a small backend 
 - Deploy backend routes as AWS Lambda functions (or a small VPS) and use SNS + Textract StartDocumentTextDetection for PDFs.
 - Configure `AWS_TEXTRACT_SNS_TOPIC_ARN` and `AWS_TEXTRACT_ROLE_ARN` for async PDF processing.
 
+Important for cPanel/static uploads:
+
+- This project uses `pdfjs-dist` in the browser and requires `public/pdf.worker.min.js` to be served from the site root so client-side PDF→JPEG rendering works. The worker file is included in `public/` and committed to the repo so you can upload the `out/` contents directly to cPanel without running `npm install` during deploy.
+- If you ever remove `public/pdf.worker.min.js` from the repo, ensure your deploy pipeline runs `npm install` (or runs `node ./scripts/copy-pdf-worker.js`) so the worker is copied into `public/` during build.
+
 See the repo CI workflow `.github/workflows/ci.yml` for TypeScript + lint checks.
