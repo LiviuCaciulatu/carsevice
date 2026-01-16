@@ -12,7 +12,9 @@ export default function S3Uploader() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrText, setOcrText] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedRomanianId | null>(null);
-  const [extractedPairs, setExtractedPairs] = useState<Array<{ key: string; value: string }>>([]);
+  const [extractedPairs, setExtractedPairs] = useState<
+    Array<{ key: string; value: string }>
+  >([]);
 
   useEffect(() => {
     if (ocrText) {
@@ -20,25 +22,28 @@ export default function S3Uploader() {
         const p = parseRomanianId(ocrText, { debug: true });
         setParsed(p);
         const keys: (keyof ParsedRomanianId)[] = [
-          'country',
-          'serie',
-          'number',
-          'lastName',
-          'firstName',
-          'nationality',
-          'cnp',
-          'birthPlace',
-          'address',
-          'issuedBy',
-          'validity',
+          "country",
+          "serie",
+          "number",
+          "lastName",
+          "firstName",
+          "nationality",
+          "cnp",
+          "birthPlace",
+          "address",
+          "issuedBy",
+          "validity",
         ];
-        const pairs = keys.map((k) => ({ key: String(k), value: (p as any)[k] ?? '' }));
+        const pairs = keys.map((k) => ({
+          key: String(k),
+          value: (p as any)[k] ?? "",
+        }));
         setExtractedPairs(pairs);
         try {
-          console.log('extractedPairs', pairs);
+          console.log("extractedPairs", pairs);
         } catch (e) {}
       } catch (err) {
-        console.error('parse error', err);
+        console.error("parse error", err);
         setParsed(null);
       }
     } else {
@@ -60,7 +65,7 @@ export default function S3Uploader() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
       const res = await fetch(`${apiBase}/api/upload-s3`, {
         method: "POST",
         body: form,
@@ -91,18 +96,24 @@ export default function S3Uploader() {
         try {
           const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf");
           const arrayBuffer = await file.arrayBuffer();
-            let loadingTask: any;
-            try {
-              const resp = await fetch('/pdf.worker.min.js', { method: 'HEAD' });
-              if (resp.ok && pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
-                pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
-                loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-              } else {
-                loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true });
-              }
-            } catch (e) {
-              loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true });
+          let loadingTask: any;
+          try {
+            const resp = await fetch("/pdf.worker.min.js", { method: "HEAD" });
+            if (resp.ok && pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
+              loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            } else {
+              loadingTask = pdfjsLib.getDocument({
+                data: arrayBuffer,
+                disableWorker: true,
+              });
             }
+          } catch (e) {
+            loadingTask = pdfjsLib.getDocument({
+              data: arrayBuffer,
+              disableWorker: true,
+            });
+          }
           const pdf = await loadingTask.promise;
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 2 });
@@ -112,9 +123,13 @@ export default function S3Uploader() {
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("Canvas context not available");
           await page.render({ canvasContext: ctx, viewport }).promise;
-          const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.9));
+          const blob: Blob | null = await new Promise((res) =>
+            canvas.toBlob(res, "image/jpeg", 0.9)
+          );
           if (!blob) throw new Error("Failed to create image from PDF page");
-          sendFile = new File([blob], file.name.replace(/\.pdf$/i, ".jpg"), { type: "image/jpeg" });
+          sendFile = new File([blob], file.name.replace(/\.pdf$/i, ".jpg"), {
+            type: "image/jpeg",
+          });
           setMessage("PDF rendered to image — running OCR...");
         } catch (err: any) {
           console.error("PDF -> JPEG conversion failed", err);
@@ -126,7 +141,7 @@ export default function S3Uploader() {
 
       const form = new FormData();
       form.append("file", sendFile as Blob);
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
       const res = await fetch(`${apiBase}/api/extract-textract`, {
         method: "POST",
         body: form,
@@ -171,7 +186,9 @@ export default function S3Uploader() {
               setMessage(`Textract job ${jobId} status: ${status} (waiting)`);
             }
           } catch (err: any) {
-            setMessage(`Error checking job status: ${err?.message || String(err)}`);
+            setMessage(
+              `Error checking job status: ${err?.message || String(err)}`
+            );
           }
           attempts++;
         }
@@ -194,17 +211,26 @@ export default function S3Uploader() {
   return (
     <div className={styles.container}>
       <h2 className={styles.title}>Încarcă fișier în S3</h2>
-      <input className={styles.fileInput} type="file" accept="image/*,application/pdf" onChange={handleFile} />
+      <input
+        className={styles.fileInput}
+        type="file"
+        accept="image/*,application/pdf"
+        onChange={handleFile}
+      />
       <div className={styles.actions}>
         <button
-          className={`${styles.button} ${styles.secondary} ${(!file || ocring) ? styles.disabled : ""}`}
+          className={`${styles.button} ${styles.secondary} ${
+            !file || ocring ? styles.disabled : ""
+          }`}
           onClick={extractText}
           disabled={!file || ocring}
         >
           {ocring ? `Extracție (${ocrProgress}%)` : "Extrage text"}
         </button>
         <button
-          className={`${styles.button} ${styles.primary} ${(!file || uploading) ? styles.disabled : ""}`}
+          className={`${styles.button} ${styles.primary} ${
+            !file || uploading ? styles.disabled : ""
+          }`}
           onClick={upload}
           disabled={!file || uploading}
         >
@@ -219,25 +245,30 @@ export default function S3Uploader() {
             <div className={styles.parsedGrid}>
               {(
                 [
-                  ['country','Țară'],
-                  ['serie','Serie'],
-                  ['number','Număr'],
-                  ['lastName','Nume'],
-                  ['firstName','Prenume'],
-                  ['nationality','Cetățenie'],
-                  ['cnp','CNP'],
-                  ['birthPlace','Loc naștere'],
-                  ['address','Domiciliu'],
-                  ['issuedBy','Eliberat de'],
-                  ['validity','Valabilitate'],
+                  ["country", "Țară"],
+                  ["serie", "Serie"],
+                  ["number", "Număr"],
+                  ["lastName", "Nume"],
+                  ["firstName", "Prenume"],
+                  ["nationality", "Cetățenie"],
+                  ["cnp", "CNP"],
+                  ["birthPlace", "Loc naștere"],
+                  ["address", "Domiciliu"],
+                  ["issuedBy", "Eliberat de"],
+                  ["validity", "Valabilitate"],
                 ] as [keyof ParsedRomanianId, string][]
               ).map(([k, label]) => (
                 <label key={k} className={styles.fieldRow}>
                   <span className={styles.fieldLabel}>{label}</span>
                   <input
                     className={styles.fieldInput}
-                    value={(parsed as any)[k] ?? ''}
-                    onChange={(e) => setParsed((cur) => ({ ...(cur ?? {}), [k]: e.target.value }))}
+                    value={(parsed as any)[k] ?? ""}
+                    onChange={(e) =>
+                      setParsed((cur) => ({
+                        ...(cur ?? {}),
+                        [k]: e.target.value,
+                      }))
+                    }
                   />
                 </label>
               ))}

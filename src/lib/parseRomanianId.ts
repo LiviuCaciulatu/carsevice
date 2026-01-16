@@ -17,16 +17,23 @@ export type ParsedRomanianId = {
 };
 
 function normalizeLine(s: string) {
-  return s.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeForMatch(s: string) {
-  return s.normalize("NFKD").replace(/\p{Diacritic}/gu, "").toUpperCase();
+  return s
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toUpperCase();
 }
 
 function findLabelValue(lines: string[], labels: string[]) {
   const ulabels = labels.map((l) => normalizeForMatch(l));
-  const labelKeywords = /\b(NUME|NOM|PRENUME|PRENOM|SEX|SEXE|CETATENIE|NATIONAL|NATIONALIT|DOMICILIU|DOMICILE|LOC NAST|LOC NA(S)?TER|EMISA|EMIS|VALAB|VALABILITATE|SERIA|NR|CNP)\b/;
+  const labelKeywords =
+    /\b(NUME|NOM|PRENUME|PRENOM|SEX|SEXE|CETATENIE|NATIONAL|NATIONALIT|DOMICILIU|DOMICILE|LOC NAST|LOC NA(S)?TER|EMISA|EMIS|VALAB|VALABILITATE|SERIA|NR|CNP)\b/;
   for (let i = 0; i < lines.length; i++) {
     const u = normalizeForMatch(lines[i]);
     for (const lab of ulabels) {
@@ -43,18 +50,15 @@ function findLabelValue(lines: string[], labels: string[]) {
               if (!labelKeywords.test(normAfter)) return normalizeLine(after);
             }
           }
-        } catch (e) {
-        }
+        } catch (e) {}
         for (let j = i + 1; j < lines.length; j++) {
           const raw = lines[j];
           const cand = normalizeLine(raw);
           if (!cand) continue;
           const ucand = normalizeForMatch(cand);
 
-
           const hasLabelKeyword = labelKeywords.test(ucand);
-          const hasSlash = ucand.includes('/');
-
+          const hasSlash = ucand.includes("/");
 
           if (hasSlash && !hasLabelKeyword) return cand;
 
@@ -67,7 +71,6 @@ function findLabelValue(lines: string[], labels: string[]) {
 
             continue;
           }
-
 
           if (hasLabelKeyword) continue;
 
@@ -84,10 +87,19 @@ function extractLabelStrict(
   lines: string[],
   labels: string[],
   maxLines = 3,
-  opts: { skipNoiseLines?: RegExp | null; allowOneLabelSkip?: boolean; skipPatterns?: RegExp[] } = { skipNoiseLines: null, allowOneLabelSkip: false, skipPatterns: undefined }
+  opts: {
+    skipNoiseLines?: RegExp | null;
+    allowOneLabelSkip?: boolean;
+    skipPatterns?: RegExp[];
+  } = {
+    skipNoiseLines: null,
+    allowOneLabelSkip: false,
+    skipPatterns: undefined,
+  }
 ) {
   const ulabels = labels.map((l) => normalizeForMatch(l));
-  const labelKeywords = /\b(NUME|NOM|PRENUME|PRENOM|SEX|SEXE|CETATENIE|NATIONAL|NATIONALIT|DOMICILIU|DOMICILE|LOC NAST|LOC NA(S)?TER|EMISA|EMIS|VALAB|VALABILITATE|SERIA|NR|CNP)\b/;
+  const labelKeywords =
+    /\b(NUME|NOM|PRENUME|PRENOM|SEX|SEXE|CETATENIE|NATIONAL|NATIONALIT|DOMICILIU|DOMICILE|LOC NAST|LOC NA(S)?TER|EMISA|EMIS|VALAB|VALABILITATE|SERIA|NR|CNP)\b/;
   for (let i = 0; i < lines.length; i++) {
     const u = normalizeForMatch(lines[i]);
     for (const lab of ulabels) {
@@ -98,10 +110,16 @@ function extractLabelStrict(
           const idx = nOrig.indexOf(lab);
           if (idx >= 0) {
             const after = origLine.substring(idx + lab.length).trim();
-            const labelCount = ulabels.reduce((c, l) => (nOrig.includes(l) ? c + 1 : c), 0);
-            if (after && !after.startsWith('/') && labelCount <= 1) {
-              if (after.includes('/')) {
-                const segs = after.split('/').map((s) => s.trim()).filter(Boolean);
+            const labelCount = ulabels.reduce(
+              (c, l) => (nOrig.includes(l) ? c + 1 : c),
+              0
+            );
+            if (after && !after.startsWith("/") && labelCount <= 1) {
+              if (after.includes("/")) {
+                const segs = after
+                  .split("/")
+                  .map((s) => s.trim())
+                  .filter(Boolean);
                 for (const seg of segs) {
                   const useg = normalizeForMatch(seg);
                   if (ulabels.some((lab2) => useg.includes(lab2))) continue;
@@ -118,7 +136,15 @@ function extractLabelStrict(
 
         const parts: string[] = [];
         let skippedLabel = false;
-        for (let j = i + 1; j < Math.min(lines.length, i + 1 + maxLines + (opts.allowOneLabelSkip ? 1 : 0)); j++) {
+        for (
+          let j = i + 1;
+          j <
+          Math.min(
+            lines.length,
+            i + 1 + maxLines + (opts.allowOneLabelSkip ? 1 : 0)
+          );
+          j++
+        ) {
           const candRaw = lines[j];
           let cand = normalizeLine(candRaw);
           if (!cand) continue;
@@ -153,7 +179,9 @@ function extractLabelStrict(
           const mrzLike = /<<|<[A-Z0-9<]{6,}|IDROU|ID[A-Z0-9]{3,}/i;
           if (mrzLike.test(cand)) break;
 
-          const last = parts.length ? normalizeForMatch(parts[parts.length - 1]) : null;
+          const last = parts.length
+            ? normalizeForMatch(parts[parts.length - 1])
+            : null;
           const now = normalizeForMatch(cand);
           if (last !== now) parts.push(cand);
         }
@@ -176,8 +204,14 @@ function extractLabelStrict(
   return undefined;
 }
 
-export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {}): ParsedRomanianId {
-  const rawLines = rawText.split(/\r?\n/).map((l) => normalizeLine(l)).filter(Boolean);
+export function parseRomanianId(
+  rawText: string,
+  opts: { debug?: boolean } = {}
+): ParsedRomanianId {
+  const rawLines = rawText
+    .split(/\r?\n/)
+    .map((l) => normalizeLine(l))
+    .filter(Boolean);
   const uLines = rawLines.map((l) => normalizeForMatch(l));
 
   const res: ParsedRomanianId = { rawLines };
@@ -186,35 +220,33 @@ export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {})
     if (!debug) return;
     try {
       console.log(`[parseRomanianId] ${label} =>`, value);
-    } catch (e) {
-    }
+    } catch (e) {}
   };
-
 
   if (rawLines.length >= 3) res.country = rawLines[2];
   else {
     const idx = uLines.findIndex((l) => /(ROMA|ROMANIA|ROUMANIE|ROU)/.test(l));
     if (idx >= 0) res.country = rawLines[idx];
   }
-  log('country', res.country);
+  log("country", res.country);
 
   const joined = rawLines.join(" ");
   const uJoined = normalizeForMatch(joined);
 
-  const seryNum = uJoined.match(/SERIA\s*([A-Z]{1,2})[^A-Z0-9\n]{0,6}NR\.?\s*([0-9]{4,7})/i);
+  const seryNum = uJoined.match(
+    /SERIA\s*([A-Z]{1,2})[^A-Z0-9\n]{0,6}NR\.?\s*([0-9]{4,7})/i
+  );
   if (seryNum) {
     res.serie = seryNum[1];
     res.number = seryNum[2];
   } else {
-
     const sMatch = uJoined.match(/SERIA\s*([A-Z]{1,2})/i);
     const nMatch = uJoined.match(/\bNR\.?\s*([0-9]{4,7})/i);
     if (sMatch) res.serie = sMatch[1];
     if (nMatch) res.number = nMatch[1];
   }
-  log('serie', res.serie);
-  log('number', res.number);
-
+  log("serie", res.serie);
+  log("number", res.number);
 
   if (!res.serie || !res.number) {
     const mrz = uJoined.match(/\b([A-Z]{2})([0-9]{6})\b/);
@@ -224,32 +256,50 @@ export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {})
     }
   }
 
-
-  const last = findLabelValue(rawLines, ["Nume", "NOM", "Last name", "NUME/NOM", "Nume/Nom", "Nume/Nom/Last name"]);
-  const first = findLabelValue(rawLines, ["Prenume", "PRENOM", "First name", "Prenume/Prenom", "Prenume/Prenom/First name"]);
+  const last = findLabelValue(rawLines, [
+    "Nume",
+    "NOM",
+    "Last name",
+    "NUME/NOM",
+    "Nume/Nom",
+    "Nume/Nom/Last name",
+  ]);
+  const first = findLabelValue(rawLines, [
+    "Prenume",
+    "PRENOM",
+    "First name",
+    "Prenume/Prenom",
+    "Prenume/Prenom/First name",
+  ]);
   if (last) res.lastName = last;
   if (first) res.firstName = first;
-  log('lastName', res.lastName);
-  log('firstName', res.firstName);
+  log("lastName", res.lastName);
+  log("firstName", res.firstName);
 
-
-  const nat = extractLabelStrict(rawLines, ["Cetatenie", "Cetätenie", "Nationality", "Nationalite"], 3, { skipNoiseLines: /^\s*[MF]\s*$/i, allowOneLabelSkip: true });
+  const nat = extractLabelStrict(
+    rawLines,
+    ["Cetatenie", "Cetätenie", "Nationality", "Nationalite"],
+    3,
+    { skipNoiseLines: /^\s*[MF]\s*$/i, allowOneLabelSkip: true }
+  );
   if (nat) res.nationality = nat;
   else {
-
-    const n = rawLines.find((l) => /\b(ROMAN|ROMANA|ROU|ROMANIA|ROMANIE)\b/i.test(l));
-    if (n) res.nationality = n.split('/')[0].trim();
+    const n = rawLines.find((l) =>
+      /\b(ROMAN|ROMANA|ROU|ROMANIA|ROMANIE)\b/i.test(l)
+    );
+    if (n) res.nationality = n.split("/")[0].trim();
   }
-
 
   if (res.nationality) {
-    const first = res.nationality.split('/')[0].trim();
+    const first = res.nationality.split("/")[0].trim();
     res.nationality = first;
 
-    res.nationalityNormalized = first.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+    res.nationalityNormalized = first
+      .normalize("NFKD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLowerCase();
   }
-  log('nationality', res.nationality);
-
+  log("nationality", res.nationality);
 
   const cnpLabel = findLabelValue(rawLines, ["CNP"]);
   if (cnpLabel) {
@@ -259,61 +309,97 @@ export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {})
     const globalMatch = joined.match(/\b(\d{13})\b/);
     if (globalMatch) res.cnp = globalMatch[1];
   }
-  log('cnp', res.cnp);
+  log("cnp", res.cnp);
 
-
-  const born = extractLabelStrict(rawLines, ["Loc nastere", "Lieu de naissance", "Place of birth", "Loc nastere/Lieu de naissance/Place of birth"], 3, { skipNoiseLines: null, allowOneLabelSkip: true });
+  const born = extractLabelStrict(
+    rawLines,
+    [
+      "Loc nastere",
+      "Lieu de naissance",
+      "Place of birth",
+      "Loc nastere/Lieu de naissance/Place of birth",
+    ],
+    3,
+    { skipNoiseLines: null, allowOneLabelSkip: true }
+  );
   if (born) res.birthPlace = born;
-  log('birthPlace', res.birthPlace);
+  log("birthPlace", res.birthPlace);
 
-
-  const addrIndex = rawLines.findIndex((l) => /DOMICILIU|DOMICILIU|DOMICILE|ADDRESS|ADRESSE/i.test(normalizeForMatch(l)));
+  const addrIndex = rawLines.findIndex((l) =>
+    /DOMICILIU|DOMICILIU|DOMICILE|ADDRESS|ADRESSE/i.test(normalizeForMatch(l))
+  );
   if (addrIndex >= 0) {
     const parts: string[] = [];
-    for (let i = addrIndex + 1; i < Math.min(rawLines.length, addrIndex + 4); i++) {
+    for (
+      let i = addrIndex + 1;
+      i < Math.min(rawLines.length, addrIndex + 4);
+      i++
+    ) {
       const u = normalizeForMatch(rawLines[i]);
-      if (/EMISA|VALABILITATE|CNP|SERIA|NR|NUME|PRENUME|LOC NASTER/i.test(u)) break;
+      if (/EMISA|VALABILITATE|CNP|SERIA|NR|NUME|PRENUME|LOC NASTER/i.test(u))
+        break;
       parts.push(rawLines[i]);
     }
     if (parts.length) res.address = parts.join(" ");
   } else {
-    const addr = findLabelValue(rawLines, ["Domiciliu", "Domiciliu/Adresse/Address"]);
+    const addr = findLabelValue(rawLines, [
+      "Domiciliu",
+      "Domiciliu/Adresse/Address",
+    ]);
     if (addr) res.address = addr;
   }
-  log('address', res.address);
+  log("address", res.address);
 
-
-  const issued = extractLabelStrict(rawLines, ["Emisa de", "Delivree par", "Issued by", "Emis de"], 3, { skipNoiseLines: null, allowOneLabelSkip: true, skipPatterns: [/\d{1,2}\.\d{1,2}\.\d{2,4}/] });
+  const issued = extractLabelStrict(
+    rawLines,
+    ["Emisa de", "Delivree par", "Issued by", "Emis de"],
+    3,
+    {
+      skipNoiseLines: null,
+      allowOneLabelSkip: true,
+      skipPatterns: [/\d{1,2}\.\d{1,2}\.\d{2,4}/],
+    }
+  );
   if (issued) res.issuedBy = issued;
-  log('issuedBy', res.issuedBy);
+  log("issuedBy", res.issuedBy);
 
-
-  const val = extractLabelStrict(rawLines, ["Valabilitate", "Validite", "Validity"], 3);
+  const val = extractLabelStrict(
+    rawLines,
+    ["Valabilitate", "Validite", "Validity"],
+    3
+  );
   if (val) {
-    const mrange = val.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/);
+    const mrange = val.match(
+      /(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/
+    );
     if (mrange) {
       res.validity = `${mrange[1]}-${mrange[2]}`;
     } else {
       res.validity = val;
     }
   }
-  log('validity', res.validity);
+  log("validity", res.validity);
 
   if (res.validity) {
-    const m = res.validity.match(/(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/);
+    const m = res.validity.match(
+      /(\d{1,2}\.\d{1,2}\.\d{2,4})\s*[\-–]\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/
+    );
     if (m) {
       const parseDateToken = (tok: string) => {
-        const parts = tok.split('.').map((p) => p.trim());
+        const parts = tok.split(".").map((p) => p.trim());
         if (parts.length !== 3) return undefined;
         let [d, mo, y] = parts;
         if (y.length === 2) {
           const yy = parseInt(y, 10);
           const nowYY = new Date().getFullYear() % 100;
 
-          const full = yy > (nowYY + 10) ? 1900 + yy : 2000 + yy;
+          const full = yy > nowYY + 10 ? 1900 + yy : 2000 + yy;
           y = String(full);
         }
-        const iso = `${y.padStart(4, '0')}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        const iso = `${y.padStart(4, "0")}-${mo.padStart(2, "0")}-${d.padStart(
+          2,
+          "0"
+        )}`;
         return iso;
       };
       const s = parseDateToken(m[1]);
@@ -321,8 +407,8 @@ export function parseRomanianId(rawText: string, opts: { debug?: boolean } = {})
       if (s) res.validityStart = s;
       if (e) res.validityEnd = e;
     }
-    log('validityStart', res.validityStart);
-    log('validityEnd', res.validityEnd);
+    log("validityStart", res.validityStart);
+    log("validityEnd", res.validityEnd);
   }
 
   return res;

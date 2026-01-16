@@ -9,7 +9,8 @@ export async function POST(req: Request) {
   try {
     const form = await req.formData();
     const file = form.get("file") as any;
-    if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!file)
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
     const filename = `${Date.now()}-${file.name}`;
     const arrayBuffer = await file.arrayBuffer();
@@ -28,9 +29,15 @@ export async function POST(req: Request) {
       const snsTopicArn = process.env.AWS_TEXTRACT_SNS_TOPIC_ARN;
       const roleArn = process.env.AWS_TEXTRACT_ROLE_ARN;
       if (snsTopicArn && roleArn) {
-        const tex = new (TextractPkg as any).TextractClient({ region: process.env.AWS_REGION });
-        const startCmd: any = new (TextractPkg as any).StartDocumentTextDetectionCommand({
-          DocumentLocation: { S3Object: { Bucket: process.env.S3_BUCKET_NAME, Name: filename } },
+        const tex = new (TextractPkg as any).TextractClient({
+          region: process.env.AWS_REGION,
+        });
+        const startCmd: any = new (
+          TextractPkg as any
+        ).StartDocumentTextDetectionCommand({
+          DocumentLocation: {
+            S3Object: { Bucket: process.env.S3_BUCKET_NAME, Name: filename },
+          },
           NotificationChannel: { RoleArn: roleArn, SNSTopicArn: snsTopicArn },
         });
         const startOut: any = await tex.send(startCmd as any);
@@ -38,18 +45,28 @@ export async function POST(req: Request) {
       }
 
       // If SNS/ROLE are not configured, just upload the PDF and inform the user
-      return NextResponse.json({ 
-        key: filename, 
-        note: 'PDF uploaded to S3. Async Textract processing requires SNS/Role configuration. Please configure AWS_TEXTRACT_SNS_TOPIC_ARN and AWS_TEXTRACT_ROLE_ARN environment variables.' 
+      return NextResponse.json({
+        key: filename,
+        note: "PDF uploaded to S3. Async Textract processing requires SNS/Role configuration. Please configure AWS_TEXTRACT_SNS_TOPIC_ARN and AWS_TEXTRACT_ROLE_ARN environment variables.",
       });
     }
 
-    const tex = new (TextractPkg as any).TextractClient({ region: process.env.AWS_REGION });
-    const cmd: any = new (TextractPkg as any).DetectDocumentTextCommand({ Document: { Bytes: new Uint8Array(arrayBuffer) } });
+    const tex = new (TextractPkg as any).TextractClient({
+      region: process.env.AWS_REGION,
+    });
+    const cmd: any = new (TextractPkg as any).DetectDocumentTextCommand({
+      Document: { Bytes: new Uint8Array(arrayBuffer) },
+    });
     const out: any = await tex.send(cmd as any);
 
-    const blocks = (out.Blocks || []) as Array<{ BlockType?: string; Text?: string }>;
-    const lines = blocks.filter((b) => b.BlockType === "LINE").map((b) => b.Text).filter(Boolean) as string[];
+    const blocks = (out.Blocks || []) as Array<{
+      BlockType?: string;
+      Text?: string;
+    }>;
+    const lines = blocks
+      .filter((b) => b.BlockType === "LINE")
+      .map((b) => b.Text)
+      .filter(Boolean) as string[];
     const raw = lines.join("\n");
 
     return NextResponse.json({ key: filename, rawText: raw });
